@@ -1,48 +1,167 @@
 # YouTube Gatekeeper
 
-A Windows-only, local-first attention guard. YouTube is blocked by default. Ask **The Gatekeeper** for access, explain your purpose, and negotiate a time limit. A local Ollama model recommends an action; deterministic Python policy decides whether it is permitted.
+> **YouTube is blocked. Convince Big Bro to let you in.**
 
-React + TypeScript + Vite → FastAPI → Ollama / policy engine → session manager → Windows hosts file. SQLite stores conversations, access sessions and usage. No cloud LLM API, Docker, telemetry, background installation or automatic elevation.
+YouTube Gatekeeper is a **local-first AI attention guard for Windows**. Instead of treating YouTube access as a one-click decision, it makes you explain what you want to watch, why you want to watch it, and how long you actually need.
 
-## Quick start on this laptop
+A local Ollama model plays **Big Bro** — a skeptical, sarcastic older-brother-style gatekeeper. But the LLM never gets the final say:
 
-Python 3.12 and Node 24 were detected. Ollama is already serving `gemma3:latest` on port 11434; the ignored local `.env` selects it. Model choice is configurable and is not embedded in application code.
+**LLM recommends → deterministic policy decides → fixed tool executes.**
 
-1. Run `Setup.cmd` to install Python dependencies in `.venv`, install frontend dependencies, and build the UI.
-2. Right-click `Start.cmd` and choose **Run as administrator**. Windows requires this for the hosts file. The launcher never elevates itself.
-3. Open **http://127.0.0.1:8000**. Keep the terminal running. YouTube should show **Blocked** after successful hosts modification.
-4. Explain what you want to watch and why. A valid grant creates a countdown; expiry re-blocks automatically. **End session** returns to blocking early.
-5. **Usage history** shows past sessions and the last seven days of access time.
+Everything runs locally. No cloud LLM API, telemetry, Docker, or background service.
 
-For a harmless walkthrough, use `Start-preview.cmd`. Its visible **Simulation** banner means no system blocking occurs. Preview hosts and database files are separate from production state.
+## Demo
 
-## Fresh Windows setup
+**Watch the demo:** *YouTube Gatekeeper in action — from blocked → negotiation → temporary access → automatic re-blocking.*
 
-Install [Python 3.11+](https://www.python.org/downloads/windows/) (enable “Add python.exe to PATH”), [Node.js](https://nodejs.org/en/download), and [Ollama for Windows](https://ollama.com/download/windows). Confirm:
+> The demo video is included with this project. If you are viewing the repository on GitHub, open the repository's video attachment to watch it.
 
-```powershell
-python --version
-node --version
-npm.cmd --version
-ollama --version
-ollama list
+## Why?
+
+Most website blockers rely on willpower or a simple switch:
+
+> "Do you really want to open YouTube?"  
+> **Yes.**
+
+That's not much friction.
+
+Gatekeeper turns the decision into a conversation.
+
+> **You:** I need YouTube for research.  
+> **Big Bro:** What exactly are you researching?  
+> **You:** Machine learning.  
+> **Big Bro:** And why YouTube?  
+> **You:** I need to follow a 20-minute tutorial.  
+> **Big Bro:** Much better. That's a reason. Not "I accidentally opened YouTube and somehow ended up watching dogs for an hour."
+
+The goal isn't to ban entertainment. It's to make the choice **intentional**.
+
+## How it works
+
+```text
+                    ┌─────────────────┐
+                    │   User request  │
+                    └────────┬────────┘
+                             ↓
+                    ┌─────────────────┐
+                    │   Big Bro / LLM │
+                    │     Ollama      │
+                    └────────┬────────┘
+                             ↓
+                    Structured JSON
+                             ↓
+              ┌──────────────────────────┐
+              │   Deterministic Policy   │
+              │         Engine           │
+              └────────────┬─────────────┘
+                           ↓
+                    ┌───────────────┐
+                    │ Fixed Tool    │
+                    │    Registry   │
+                    └───────┬───────┘
+                            ↓
+                  ┌───────────────────┐
+                  │ Windows hosts file│
+                  └───────────────────┘
 ```
 
-Download a local model that fits your machine. For example, `ollama pull gemma3:4b`. This example downloads several GB; it is not a required or hardcoded model. Start Ollama from its installed app, or run `ollama serve` if no server is already running. Set `OLLAMA_MODEL` to the exact name shown by `ollama list`.
+The important architectural boundary is that **the model is not trusted with permissions**.
 
-```powershell
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-Copy-Item .env.example .env
-cd frontend
-npm.cmd ci
-npm.cmd run build
-cd ..
+The model can recommend:
+
+- `continue_questioning`
+- `deny`
+- `grant`
+
+The backend validates the structured response and applies deterministic rules for duration, daily allowance, active sessions, and other constraints before anything touches the hosts file.
+
+There is **no model-generated Python, shell command, or arbitrary tool execution**.
+
+## What happens when access is granted?
+
+1. The request is persisted to SQLite.
+2. The backend validates the requested duration against policy.
+3. YouTube is temporarily unblocked.
+4. A countdown tracks the exact expiry.
+5. The expiry task re-blocks YouTube automatically.
+6. Ending the session early blocks it immediately.
+7. Usage is recorded locally.
+
+The backend owns the deadline — not the LLM.
+
+## Features
+
+- 🤖 **Local AI gatekeeper** powered by Ollama
+- 🧠 **Conversational friction** instead of a simple allow/deny button
+- 🔒 **Blocked by default**
+- ⏱️ **Bounded access sessions** with automatic expiry
+- 📊 **Local usage history** and daily allowance
+- 🛡️ **Deterministic policy enforcement**
+- 🏠 **Fully local** — conversations and usage stay on the machine
+- 🪟 **Windows hosts-file control**
+- 🧪 **Simulation mode** for development without modifying the real hosts file
+- ⚡ **React + TypeScript + Vite** frontend
+- 🚀 **FastAPI** backend
+- 🗄️ **SQLite** persistence
+
+## Security model
+
+The LLM is treated as an **untrusted decision recommender**, not an authority.
+
+Several layers enforce this:
+
+- Structured JSON responses are validated with strict Pydantic models.
+- Unknown JSON fields and duplicate keys are rejected.
+- Grant durations must be whole integers.
+- Session limits and daily limits are enforced outside the model.
+- Active sessions cannot be extended.
+- The tool registry is fixed in application code.
+- Model output cannot execute code or shell commands.
+- Ollama is restricted to a local loopback address.
+- Hosts-file changes are isolated to the Gatekeeper-owned section.
+- Failed writes attempt rollback.
+- Existing hosts-file entries outside the managed section are preserved.
+- Local API mutations require the expected local request headers/origin.
+
+This is an **attention-management tool, not a security boundary**. Hosts-file blocking can be bypassed by things such as VPNs, proxies, alternate domains, DNS configuration, or existing browser connections.
+
+## Architecture
+
+```text
+React / TypeScript / Vite
+          │
+          │ /api
+          ▼
+       FastAPI
+          │
+    ┌─────┴──────────┐
+    │                │
+    ▼                ▼
+Gatekeeper       Session Manager
+   Agent              │
+    │                 ▼
+    ▼              SQLite
+Ollama
+    │
+    ▼
+Structured decision
+    │
+    ▼
+Policy Engine
+    │
+    ▼
+Fixed Tool Registry
+    │
+    ▼
+YouTube Controller
+    │
+    ▼
+Windows hosts file
 ```
-
-Edit `.env` before starting. Existing environment variables override `.env`. `npm.cmd` works even when PowerShell blocks the unsigned `npm.ps1` shim; virtual-environment activation is unnecessary.
 
 ## Configuration
+
+Copy `.env.example` to `.env` and configure a locally installed Ollama model:
 
 ```dotenv
 OLLAMA_MODEL=your-installed-model:tag
@@ -50,87 +169,119 @@ OLLAMA_BASE_URL=http://127.0.0.1:11434
 GATEKEEPER_DRY_RUN=false
 ```
 
-The Ollama URL must be loopback HTTP. An unset model or unavailable Ollama produces a clear setup error and cannot grant access. Models must produce structured JSON; invalid output is rejected. The provider interface is in `backend/llm/base.py`, with the default implementation in `ollama_provider.py`.
-
-Edit `config.yaml` and restart the backend to change limits:
+Session policy lives in `config.yaml`:
 
 ```yaml
 youtube:
   min_session_minutes: 5
   max_session_minutes: 60
   daily_limit_minutes: 120
+
 gatekeeper:
   max_question_rounds: 8
 ```
 
-The minimum may not be lower than five minutes. A grant needs a reason and a whole-number duration within the configured bounds. The full requested duration must fit the remaining daily allowance. Active sessions cannot be extended. The conversation has a finite number of question rounds, after which it must reach a decision. Model instructions cannot override these rules.
+The model is configurable and is **not hardcoded into the application**.
 
-Optional `GATEKEEPER_CONFIG_PATH` and `GATEKEEPER_DATABASE_PATH` set project-relative or absolute paths. The defaults are `config.yaml` and `data/gatekeeper.sqlite3`; preview uses `data/preview.sqlite3` and `data/hosts.preview`. Keep `.env` and databases private. Conversation text stays on this machine.
+## Run it
+
+### Requirements
+
+- Windows
+- Python 3.11+
+- Node.js
+- Ollama
+- A local Ollama model
+
+### Setup
+
+Run:
+
+```text
+Setup.cmd
+```
+
+Then set `OLLAMA_MODEL` in `.env`.
+
+For the real application, run:
+
+```text
+Start.cmd
+```
+
+as Administrator. Windows requires administrator privileges to modify the hosts file.
+
+For a safe walkthrough without modifying system networking:
+
+```text
+Start-preview.cmd
+```
+
+Preview mode uses isolated hosts/database files and clearly indicates that it is running in simulation mode.
 
 ## Development
 
-Run one backend process, **one worker**, on loopback. In an Administrator terminal for actual blocking:
+Run the backend on loopback:
 
 ```powershell
 .\.venv\Scripts\python.exe -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
 ```
 
-In a second, ordinary terminal:
+Run the frontend separately:
 
 ```powershell
 cd frontend
 npm.cmd run dev
 ```
 
-Open http://127.0.0.1:5173. Vite proxies `/api` to FastAPI. For simulation, set `$env:GATEKEEPER_DRY_RUN = 'true'` before starting the backend. Avoid reload/multiple workers during real access sessions. A built UI is served directly by FastAPI, so normal use needs only `Start.cmd`.
+The Vite development server proxies `/api` to FastAPI.
 
-## Tests
+For real access sessions, run **one backend worker** and keep the backend running. The expiry loop cannot enforce a deadline while the process itself is stopped.
+
+## Testing
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest
+
 cd frontend
 npm.cmd run build
 ```
 
-Tests use temporary hosts files and SQLite databases; they never touch Windows hosts. Ollama is mocked for deterministic API tests. Coverage includes idempotent hosts edits, preservation of unrelated bytes, malformed sections, permissions, rejected durations, daily limits, expiry, restart recovery, failed unlocks, malformed model JSON, overlong grants, and API validation. No live model is required for this suite.
+The test suite uses temporary hosts files and SQLite databases. It does not modify the Windows hosts file.
 
-Optional integration checks:
+Coverage includes:
 
-```powershell
-# Real configured Ollama model, with temporary hosts and database files only:
-.\.venv\Scripts\python.exe scripts/check_model.py
-# UI checks require Start-preview.cmd running and Microsoft Edge installed:
-.\.venv\Scripts\python.exe -m pip install -r requirements-browser.txt
-.\.venv\Scripts\python.exe scripts/inspect_ui.py
-.\.venv\Scripts\python.exe scripts/check_ui.py
-```
+- hosts-file idempotency
+- preservation of unrelated entries
+- malformed managed sections
+- permissions failures
+- rejected durations
+- daily limits
+- session expiry
+- restart recovery
+- failed unlocks
+- malformed model responses
+- overlong grants
+- API validation
 
-The UI regression check supplies isolated API fixtures in its browser context to exercise grants, reloads, early blocking, countdown confirmation, offline errors, history and mobile navigation. This does not grant real access or change production data. Screenshots are saved under `artifacts/`.
+No live LLM is required for the test suite.
 
-## API and tools
+## API
 
-| Endpoint | Behavior |
+| Endpoint | Purpose |
 | --- | --- |
-| `GET /api/status` | Actual managed hosts state, exact expiry, errors, model health and policy |
-| `POST /api/chat` | `{ "message": "...", "conversation_id": "optional existing ID" }` |
-| `GET /api/conversations/{id}` | Restore persisted conversation messages |
-| `GET /api/session` | Current session or `null` |
-| `GET /api/usage` | Today's usage, allowance, recent sessions and daily totals |
-| `POST /api/admin/block` | End access early and re-block; JSON `{}` body |
+| `GET /api/status` | Blocking state, expiry, model health and policy |
+| `POST /api/chat` | Send a Gatekeeper message |
+| `GET /api/conversations/{id}` | Restore a conversation |
+| `GET /api/session` | Current access session |
+| `GET /api/usage` | Usage, allowance and history |
+| `POST /api/admin/block` | End access and re-block YouTube |
 
-There is no unlock endpoint. Chat returns `response`, `decision`, `conversation_id`, `youtube_status`, and tool events. The fixed tool registry includes `check_youtube_status`, `grant_youtube_access`, and `deny_youtube_access`. Only validated structured decisions reach those tools. There is no execution of model-generated Python or shell commands. Mutations require JSON and an allowed local origin; unknown Host headers are rejected. This is a personal local app, not a multi-user service.
+There is deliberately **no unlock endpoint**. Access must go through the Gatekeeper conversation.
 
-## Expiry, restarts, and usage semantics
+## Hosts-file behavior
 
-Grants are committed to SQLite **before** removing the block, including start time, exact UTC expiry, duration and reason. The expiry loop runs independently of model inference. If an active session is restored before expiry, it retains its original deadline. If restored after expiry, YouTube is blocked immediately. A failed hosts operation is shown as an error; the UI never claims successful protection when the backend cannot confirm it.
-
-**Keep the backend running to enforce deadlines.** The scheduler normally checks once a second. Graceful shutdown attempts to re-block while preserving the session's original deadline for restart. If the process is killed, Windows shuts down, or the machine is asleep, Python cannot run an expiry action. The correct state is reconciled on restart/resume. This version installs no Windows service, scheduled task or hidden watchdog; it cannot promise blocking while terminated.
-
-Usage measures **permitted access time**, not actual watching or browser activity. Early-ended sessions count only elapsed time. Sessions spanning local midnight are split between days; timestamps are stored in UTC and displayed locally. History is limited to the latest 100 sessions, while daily allowance calculations include all stored sessions. A crashed session is conservatively accounted through its expiry unless it was ended early.
-
-## Hosts file behavior and recovery
-
-Default path: `C:\Windows\System32\drivers\etc\hosts` (uses `%SystemRoot%` if Windows is installed elsewhere). The controller maps `youtube.com`, `www.youtube.com`, `m.youtube.com`, `youtu.be`, and `www.youtu.be` to `127.0.0.1` inside exactly one managed section:
+The controller manages one dedicated section of the Windows hosts file:
 
 ```text
 # === YOUTUBE_GATEKEEPER_START ===
@@ -142,18 +293,48 @@ Default path: `C:\Windows\System32\drivers\etc\hosts` (uses `%SystemRoot%` if Wi
 # === YOUTUBE_GATEKEEPER_END ===
 ```
 
-Everything outside the section is preserved. The controller uses locked, in-place edits, avoids duplicate entries and refuses damaged/duplicate markers. On an I/O failure it attempts rollback. On successful changes it runs the fixed Windows `ipconfig /flushdns` command. A small metadata comment inside the section may record an added separator newline to restore original bytes exactly.
+Everything outside this section is preserved.
 
-To manually restore access or uninstall:
+When access ends, the managed section is removed and DNS is flushed.
 
-1. Stop the backend first so it cannot reapply the section.
-2. Start Notepad **as Administrator**, choose **File → Open**, choose **All files**, and open the hosts path above.
-3. Delete only the lines from `# === YOUTUBE_GATEKEEPER_START ===` through `# === YOUTUBE_GATEKEEPER_END ===`, inclusive. Preserve all other entries. Save without a `.txt` extension.
-4. Run `ipconfig /flushdns` in an Administrator terminal and close/reopen your browser if needed.
-5. The project folder and local databases may then be removed. No system service or startup task needs uninstalling.
+If you need to manually restore the hosts file, stop the backend first and remove only the Gatekeeper section.
 
-This is psychological friction, not a security boundary. Hosts files do not support wildcard domains; alternate domains, VPN/proxy behavior, DNS choices and already-established browser connections can bypass or delay the effect. Existing video streams may continue. Close old YouTube tabs and check a new navigation when testing. Other blockers' hosts entries are intentionally preserved and can keep YouTube blocked during an approved session.
+## Project structure
 
-## Implementation references
+```text
+backend/
+├── agents/       # LLM decision layer
+├── api/          # FastAPI routes
+├── llm/          # Local LLM provider
+├── services/     # Policy, sessions and YouTube control
+├── tools/        # Fixed application tool registry
+└── main.py       # Application entry point
 
-The integration follows Ollama's [structured outputs](https://ollama.com/blog/structured-outputs) JSON-schema interface and FastAPI's [lifespan](https://fastapi.tiangolo.com/advanced/events/) mechanism for startup reconciliation and the expiry task.
+frontend/
+├── components/
+├── hooks/
+├── pages/
+└── services/
+
+scripts/           # Model/UI integration checks
+config.yaml        # Deterministic policy configuration
+Setup.cmd          # Windows setup
+Start.cmd          # Production launcher
+Start-preview.cmd  # Safe simulation launcher
+```
+
+## Design principle
+
+The interesting part of this project isn't blocking YouTube.
+
+It's the separation between **reasoning and authority**.
+
+The LLM gets to reason about the user's request.
+
+It does **not** get to decide what the computer is allowed to do.
+
+> **The model recommends.  
+> The application decides.  
+> The tools execute.**
+
+That's the pattern this project is built around.
