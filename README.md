@@ -14,7 +14,11 @@ Everything runs locally. No cloud LLM API, telemetry, Docker, or background serv
 
 **Watch the demo:** *YouTube Gatekeeper in action — from blocked → negotiation → temporary access → automatic re-blocking.*
 
-> The demo video is included with this project. If you are viewing the repository on GitHub, open the repository's video attachment to watch it.
+
+
+https://github.com/user-attachments/assets/96512427-4e39-4240-b39e-889166158dce
+
+
 
 ## Why?
 
