@@ -1,0 +1,6 @@
+youtube:
+  min_session_minutes: 5
+  max_session_minutes: 60
+  daily_limit_minutes: 120
+gatekeeper:
+  max_question_rounds: 8

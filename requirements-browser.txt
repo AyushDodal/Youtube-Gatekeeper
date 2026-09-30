@@ -1,0 +1,2 @@
+# Optional UI smoke checks using an existing Microsoft Edge installation.
+playwright==1.63.0
